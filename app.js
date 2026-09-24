@@ -684,7 +684,9 @@ document.addEventListener("click", e => {
   };
   if(actions[a]) actions[a]();
 });
-document.addEventListener("focusin", e => { if(practice && e.target.matches && e.target.matches("input")) practice.lastInput = e.target; });
+document.addEventListener("focusin", e => {
+  if(practice && e.target.matches && e.target.matches("input")){ practice.lastInput = e.target; setTimeout(() => { try { e.target.scrollIntoView({ block:"center", behavior:"smooth" }); } catch(err){} }, 250); }
+});
 document.addEventListener("input", e => {
   if(e.target.id==="wordQ"){ ui.wordQ = e.target.value; ui.wordLimit = 80; renderWordList(); }
   if(e.target.id==="sentQ"){ ui.sentQ = e.target.value; ui.sentLimit = 60; renderSentList(); }
