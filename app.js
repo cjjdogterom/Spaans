@@ -272,8 +272,15 @@ function renderPractice(){
   const banner = (s.goalShown && !s.goalDismissed && !practice.adhoc && !isDaily) ? `<div class="banner"><span>¡Muy bien! Je ${data.settings.minutes} minuten zijn vol. Nog ${s.tasks.length - s.idx} oefeningen over.</span><span class="row" style="margin-left:auto;gap:8px"><button class="btn sm ghost" data-action="dismissGoal">Doorgaan</button><button class="btn sm" data-action="finishNow">Afronden</button></span></div>` : "";
   const body = ({ intro:viewIntro, mc:viewMC, type:viewType, vintro:viewVIntro, vdrill:viewVDrill, sintro:viewSIntro, scramble:viewScramble, cloze:viewCloze, vcloze:viewVCloze, smc:viewSMC }[t.t])(it, t);
   view.innerHTML = head + banner + `<section class="pcard fade" data-task="${t.t}">${body}</section>`;
-  const first = view.querySelector("input:not([disabled])"); if(first && practice.phase==="ask" && window.matchMedia("(min-width:760px)").matches) first.focus();
-  if(practice.phase==="feedback"){ const b = view.querySelector("[data-action=next]"); if(b) b.focus(); }
+  focusPractice(t);
+}
+const TYPING = { type:1, cloze:1, vcloze:1, vdrill:1 };
+function focusPractice(t){
+  if(TYPING[t.t]){
+    const inputs = Array.from(view.querySelectorAll(".pcard input"));
+    const target = practice.phase==="ask" ? (inputs.find(i => !i.value) || inputs[0]) : inputs[0];
+    if(target){ try { target.focus({ preventScroll: practice.phase==="feedback" }); } catch(e){ target.focus(); } if(practice.phase==="feedback"){ try { target.setSelectionRange(target.value.length, target.value.length); } catch(e){} } }
+  } else if(practice.phase==="feedback"){ const b = view.querySelector("[data-action=next]"); if(b) b.focus(); }
 }
 function feedbackBlock(correct, extraHtml=""){
   const r = practice.result;
@@ -312,7 +319,7 @@ function viewType(it){
   return `<div class="eyebrow">${t1 && t1.final ? "Eindronde · " : ""}Vertaal naar het Spaans · ${esc(E.catName(it.cat))}</div>
     <div class="prompt">${esc(it.nl)}</div>
     ${hint ? `<div class="mini">${hint}</div>` : ""}
-    <input class="answer ${fb ? (practice.result==="ok" ? "ok" : practice.result==="almost" ? "almost" : "bad") : ""}" id="ans" lang="es" enterkeyhint="go" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Typ hier…" value="${esc(practice.given||"")}" ${fb ? "disabled" : ""}>
+    <form class="ansform" action="#"><input class="answer ${fb ? "fb " + (practice.result==="ok" ? "ok" : practice.result==="almost" ? "almost" : "bad") : ""}" id="ans" lang="es" enterkeyhint="go" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Typ hier…" value="${esc(practice.given||"")}"></form>
     ${fb ? feedbackBlock(esc(it.es)) : accentBar() + `<div class="actions"><button class="btn big" type="button" data-action="check">Controleer <span class="kbd">Enter</span></button></div>`}`;
 }
 function conjTable(v, tenseId, opts={}){
@@ -339,7 +346,7 @@ function viewVDrill(it){
   return `<div class="eyebrow">Vervoeg · ${esc(tn.name)} <span class="muted">(${esc(tn.nl)})</span></div>
     <div class="word">${esc(v.inf)}</div>
     <div class="sub">${esc(v.nl)}${v.refl ? " · wederkerend: typ ook me / te / se …" : ""}${it.tense==="perfecto" ? " · gebruik haber + participio" : ""}</div>
-    <div class="drill">${practice.persons.map(p => `<label><span>${esc(E.PERSONS[p])}</span><input data-p="${p}" lang="es" enterkeyhint="next" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" class="${fb ? (d[p]==="ok" ? "ok" : d[p]==="almost" ? "almost" : "bad") : ""}" value="${esc((practice.given||{})[p]||"")}" ${fb ? "disabled" : ""}></label>`).join("")}</div>
+    <div class="drill">${practice.persons.map(p => `<form class="ansform" action="#"><label><span>${esc(E.PERSONS[p])}</span><input data-p="${p}" lang="es" enterkeyhint="next" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" class="${fb ? "fb " + (d[p]==="ok" ? "ok" : d[p]==="almost" ? "almost" : "bad") : ""}" value="${esc((practice.given||{})[p]||"")}"></label></form>`).join("")}</div>
     ${fb ? feedbackBlock("", `<div style="color:var(--ink);margin-top:6px">${conjTable(v, it.tense)}</div>`) : accentBar() + `<div class="actions"><button class="btn big" data-action="checkDrill">Controleer <span class="kbd">Enter</span></button></div>`}`;
 }
 function viewSIntro(it){
@@ -366,7 +373,7 @@ function viewCloze(it){
     <div class="cloze">${clozeHtml(it, fb ? `<b style="color:var(--accent)">${esc(it.cloze)}</b>` : blank)}</div>
     <div class="sub">${esc(it.nl)}</div>
     <div class="mini">Begint met <b>${esc(it.cloze[0])}</b> · ${it.cloze.length} letters</div>
-    <input class="answer ${fb ? (practice.result==="ok" ? "ok" : practice.result==="almost" ? "almost" : "bad") : ""}" id="ans" lang="es" enterkeyhint="go" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Het ontbrekende woord" value="${esc(practice.given||"")}" ${fb ? "disabled" : ""}>
+    <form class="ansform" action="#"><input class="answer ${fb ? "fb " + (practice.result==="ok" ? "ok" : practice.result==="almost" ? "almost" : "bad") : ""}" id="ans" lang="es" enterkeyhint="go" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Het ontbrekende woord" value="${esc(practice.given||"")}"></form>
     ${fb ? feedbackBlock(esc(it.cloze)) : accentBar() + `<div class="actions"><button class="btn big" type="button" data-action="check">Controleer <span class="kbd">Enter</span></button></div>`}`;
 }
 function viewVCloze(it){
@@ -377,7 +384,7 @@ function viewVCloze(it){
     <div class="cloze">${clozeHtml(it, fb ? `<b style="color:var(--accent)">${esc(it.cloze)}</b>` : blank)}</div>
     <div class="sub">${esc(it.nl)}</div>
     <div class="mini">Werkwoord: <b>${esc(v.inf)}</b> (${esc(v.nl)})${v.refl ? " · wederkerend" : ""}${it.tense==="perfecto" ? " · haber + participio" : ""}</div>
-    <input class="answer ${fb ? (practice.result==="ok" ? "ok" : practice.result==="almost" ? "almost" : "bad") : ""}" id="ans" lang="es" enterkeyhint="go" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="De juiste vorm van ${esc(v.inf)}" value="${esc(practice.given||"")}" ${fb ? "disabled" : ""}>
+    <form class="ansform" action="#"><input class="answer ${fb ? "fb " + (practice.result==="ok" ? "ok" : practice.result==="almost" ? "almost" : "bad") : ""}" id="ans" lang="es" enterkeyhint="go" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="De juiste vorm van ${esc(v.inf)}" value="${esc(practice.given||"")}"></form>
     ${fb ? feedbackBlock(esc(it.cloze), `<div style="color:var(--ink);margin-top:6px">${conjTable(v, it.tense)}</div>`) : accentBar() + `<div class="actions"><button class="btn big" type="button" data-action="check">Controleer <span class="kbd">Enter</span></button></div>`}`;
 }
 function viewSMC(it){
@@ -650,7 +657,7 @@ document.addEventListener("click", e => {
     choose(){ if(practice.phase!=="ask") return; const i = +b.dataset.i, t = s.tasks[s.idx]; practice.chosen = i; grade(practice.options[i].id===t.id ? "ok" : "wrong"); },
     check(){ checkTyped(); },
     checkDrill(){ checkDrill(); },
-    accent(){ const inp = practice && practice.lastInput && view.contains(practice.lastInput) ? practice.lastInput : view.querySelector("input:not([disabled])"); if(inp) insertAtCursor(inp, b.dataset.ch); },
+    accent(){ insertAccent(b); },
     build(){ const i = +b.dataset.i, it = E.item(s.tasks[s.idx].id); practice.built.push({ w: it.words[i], i }); renderPractice(); },
     unbuild(){ practice.built.splice(+b.dataset.k, 1); renderPractice(); },
     clearBuild(){ practice.built = []; renderPractice(); },
@@ -684,6 +691,10 @@ document.addEventListener("click", e => {
   };
   if(actions[a]) actions[a]();
 });
+document.addEventListener("beforeinput", e => { if(cur==="practice" && practice && practice.phase==="feedback" && e.target.closest && e.target.closest(".pcard")) e.preventDefault(); });
+document.addEventListener("mousedown", e => { if(e.target.closest && e.target.closest("[data-action=accent]")) e.preventDefault(); });
+document.addEventListener("touchend", e => { const b = e.target.closest && e.target.closest("[data-action=accent]"); if(b){ e.preventDefault(); insertAccent(b); } }, { passive:false });
+function insertAccent(b){ const inp = practice && practice.lastInput && view.contains(practice.lastInput) ? practice.lastInput : view.querySelector(".pcard input"); if(inp) insertAtCursor(inp, b.dataset.ch); }
 document.addEventListener("focusin", e => {
   if(practice && e.target.matches && e.target.matches("input")){ practice.lastInput = e.target; setTimeout(() => { try { e.target.scrollIntoView({ block:"center", behavior:"smooth" }); } catch(err){} }, 250); }
 });
@@ -697,16 +708,21 @@ document.addEventListener("change", e => {
   const key = e.target.dataset && e.target.dataset.setting;
   if(key){ const v = e.target.value; data.settings[key] = (key==="mode" || key==="dailyPick") ? v : +v; if(data.session && data.session.day===today && !data.session.done && data.session.idx===0) data.session = null; if((key==="dailyWords" || key==="dailyPick") && data.daily && data.daily.day===today && !data.daily.done && data.daily.answered===0) data.daily = null; save(); renderSettings(); }
 });
+function handleEnter(){
+  const s = sess(); if(!s || practice.phase==="summary") return;
+  const t = s.tasks[s.idx]; if(!t) return;
+  if(practice.phase==="feedback") return next();
+  if(t.t==="type" || t.t==="cloze" || t.t==="vcloze") return checkTyped();
+  if(t.t==="vdrill"){ const inputs = Array.from(view.querySelectorAll(".drill input")); const i = inputs.indexOf(document.activeElement); if(i>=0 && i<inputs.length-1 && !inputs[i+1].value) return inputs[i+1].focus(); return checkDrill(); }
+  if(t.t==="scramble" && practice.built && practice.built.length===E.item(t.id).words.length){ const b = document.querySelector("[data-action=checkBuild]"); if(b) b.click(); }
+}
+document.addEventListener("submit", e => { if(e.target.classList && e.target.classList.contains("ansform")){ e.preventDefault(); if(cur==="practice" && practice) handleEnter(); } });
 document.addEventListener("keydown", e => {
   if(cur!=="practice" || !practice) return;
   const s = sess(); if(!s || practice.phase==="summary") return;
   const t = s.tasks[s.idx]; if(!t) return;
-  if(e.key==="Enter"){
-    if(practice.phase==="feedback"){ e.preventDefault(); return next(); }
-    if(t.t==="type" || t.t==="cloze" || t.t==="vcloze"){ e.preventDefault(); return checkTyped(); }
-    if(t.t==="vdrill"){ const inputs = Array.from(view.querySelectorAll(".drill input")); const i = inputs.indexOf(document.activeElement); if(i>=0 && i<inputs.length-1 && !inputs[i+1].value){ e.preventDefault(); return inputs[i+1].focus(); } e.preventDefault(); return checkDrill(); }
-    if(t.t==="scramble" && practice.built && practice.built.length===E.item(t.id).words.length){ e.preventDefault(); return document.querySelector("[data-action=checkBuild]").click(); }
-  }
+  const onButton = e.target.tagName==="BUTTON" && e.target.dataset.action!=="next";
+  if((e.key==="Enter" || e.keyCode===13) && !onButton){ e.preventDefault(); return handleEnter(); }
   if(practice.phase==="ask" && (t.t==="mc" || t.t==="smc") && /^[1-4]$/.test(e.key) && !(e.target.matches && e.target.matches("input"))){ const i = +e.key-1; if(practice.options[i]){ practice.chosen = i; grade(practice.options[i].id===t.id ? "ok" : "wrong"); } }
 });
 $("#tabs").addEventListener("click", e => {
