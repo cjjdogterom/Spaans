@@ -82,7 +82,19 @@ function insertAtCursor(input, text){
   input.value = input.value.slice(0,s) + text + input.value.slice(e); input.setSelectionRange(s+text.length, s+text.length); input.focus();
 }
 const ACCENTS = ["á","é","í","ó","ú","ñ","ü","¿","¡"];
-const accentBar = () => `<div class="accents" aria-label="Speciale tekens">${ACCENTS.map(a => `<button type="button" data-action="accent" data-ch="${a}" tabindex="-1">${a}</button>`).join("")}</div>`;
+const accentBar = () => `<div class="accents" aria-label="Speciale tekens">${ACCENTS.map(a => `<button type="button" data-action="accent" data-nofocus data-ch="${a}" tabindex="-1">${a}</button>`).join("")}</div>`;
+// uitspraak via de spraaksynthese van het apparaat (Spaanse stem uit Spanje als die er is)
+const SPK_ICON = `<svg viewBox="0 0 24 24"><path d="M11 5 6 9H3v6h3l5 4z"/><path d="M15.5 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13"/></svg>`;
+const speechOK = () => "speechSynthesis" in window && typeof SpeechSynthesisUtterance!=="undefined";
+const canSpeak = () => speechOK() && data.settings.speech!=="off";
+const spk = (text, cls="") => canSpeak() && text ? `<button type="button" class="spk ${cls}" data-action="speak" data-nofocus data-text="${esc(text)}" aria-label="Spreek uit">${SPK_ICON}</button>` : "";
+function pickVoice(){ try { const vs = speechSynthesis.getVoices(); return vs.find(v => /^es[-_]ES/i.test(v.lang) && /Mónica|Monica|Marisol|Jorge|Google español$/i.test(v.name)) || vs.find(v => /^es[-_]ES/i.test(v.lang)) || vs.find(v => /^es/i.test(v.lang)) || null; } catch(e){ return null; } }
+function speak(text){
+  if(!canSpeak() || !text) return;
+  try { speechSynthesis.cancel(); const u = new SpeechSynthesisUtterance(String(text)); u.lang = "es-ES"; const v = pickVoice(); if(v) u.voice = v; u.rate = 0.88; speechSynthesis.speak(u); } catch(e){}
+}
+function autoSpeak(text, key){ if(data.settings.speech!=="auto" || !text) return; if(practice && practice.spokenKey===key) return; if(practice) practice.spokenKey = key; speak(text); }
+if(speechOK()){ try { speechSynthesis.getVoices(); speechSynthesis.addEventListener("voiceschanged", () => speechSynthesis.getVoices()); } catch(e){} }
 const flame = `<svg viewBox="0 0 24 24"><path d="M12 2c1 4 5 6 5 11a5 5 0 0 1-10 0c0-2 1-3 1-5 2 1 2 3 2 3s2-4 2-9z"/></svg>`;
 
 // ---------- weergave ----------
@@ -273,6 +285,12 @@ function renderPractice(){
   const body = ({ intro:viewIntro, mc:viewMC, type:viewType, vintro:viewVIntro, vdrill:viewVDrill, sintro:viewSIntro, scramble:viewScramble, cloze:viewCloze, vcloze:viewVCloze, smc:viewSMC }[t.t])(it, t);
   view.innerHTML = head + banner + `<section class="pcard fade" data-task="${t.t}">${body}</section>`;
   focusPractice(t);
+  // uitspraak: bij kennismaking en zodra het Spaans zichtbaar is (als vraag, of als antwoord in de feedback)
+  let say = null;
+  if(t.t==="intro" || t.t==="sintro") say = it.es; else if(t.t==="vintro") say = it.verb.inf;
+  else if(practice.phase==="ask"){ if(((t.t==="mc" || t.t==="type") && t.dir==="es") || t.t==="smc") say = it.es; }
+  else if(it.kind==="word" || it.kind==="sent") say = it.es;
+  if(say) autoSpeak(say, s.idx + ":" + (practice.adhoc ? "a" : practice.kind||"q"));
 }
 const TYPING = { type:1, cloze:1, vcloze:1, vdrill:1 };
 function focusPractice(t){
@@ -296,7 +314,7 @@ function viewIntro(it){
   const ex = exampleFor(it);
   const s0 = sess(), t0 = s0 && s0.tasks[s0.idx];
   return `<div class="eyebrow">${t0 && t0.daily ? "Woord van de dag" : "Nieuw woord"} · ${esc(E.catName(it.cat))}</div>
-    <div class="word">${esc(it.es)}</div>
+    <div class="word">${esc(it.es)} ${spk(it.es)}</div>
     <div class="prompt">${esc(it.nl)}</div>
     <div class="mini">${typeName}${gender ? " · " + gender : ""}</div>
     ${ex ? `<div class="sub"><span class="eyebrow" style="display:block;margin-bottom:4px">Voorbeeld</span>${highlight(ex.es, it)}<br><span class="mini">${esc(ex.nl)}</span></div>` : ""}
@@ -308,30 +326,37 @@ function viewMC(it, t){
   const optText = o => es ? shortNl(o) : o.es;
   const fb = practice.phase==="feedback";
   return `<div class="eyebrow">${es ? "Wat betekent dit?" : "Hoe zeg je dit in het Spaans?"}</div>
-    <div class="${es ? "word" : "prompt"}">${esc(es ? it.es : it.nl)}</div>
+    <div class="${es ? "word" : "prompt"}">${esc(es ? it.es : it.nl)}${es ? " " + spk(it.es) : ""}</div>
     <div class="choices">${practice.options.map((o,i) => { const cls = fb ? (o.id===it.id ? "right" : (practice.chosen===i ? "wrong" : "")) : ""; return `<button class="choice ${cls}" data-action="choose" data-i="${i}" ${fb ? "disabled" : ""}><span class="k">${i+1}</span><span>${esc(optText(o))}</span></button>`; }).join("")}</div>
-    ${fb ? feedbackBlock(`${esc(it.es)} — ${esc(it.nl)}`) : `<p class="hint">Kies met de toetsen 1 tot 4.</p>`}`;
+    ${fb ? feedbackBlock(`${esc(it.es)} — ${esc(it.nl)} ${spk(it.es, "sm")}`) : `<p class="hint">Kies met de toetsen 1 tot 4.</p>`}`;
 }
-function viewType(it){
-  const fb = practice.phase==="feedback";
-  const hint = it.type==="n" ? "Zelfstandig naamwoord: typ het met lidwoord (el / la)." : it.type==="a" ? "Bijvoeglijk naamwoord, mannelijke vorm." : "";
+function viewType(it, t){
+  const fb = practice.phase==="feedback", toEs = (t && t.dir)!=="es";
   const s1 = sess(), t1 = s1 && s1.tasks[s1.idx];
-  return `<div class="eyebrow">${t1 && t1.final ? "Eindronde · " : ""}Vertaal naar het Spaans · ${esc(E.catName(it.cat))}</div>
-    <div class="prompt">${esc(it.nl)}</div>
-    ${hint ? `<div class="mini">${hint}</div>` : ""}
-    <form class="ansform" action="#"><input class="answer ${fb ? "fb " + (practice.result==="ok" ? "ok" : practice.result==="almost" ? "almost" : "bad") : ""}" id="ans" lang="es" enterkeyhint="go" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Typ hier…" value="${esc(practice.given||"")}"></form>
-    ${fb ? feedbackBlock(esc(it.es)) : accentBar() + `<div class="actions"><button class="btn big" type="button" data-action="check">Controleer <span class="kbd">Enter</span></button></div>`}`;
+  const cls = fb ? "fb " + (practice.result==="ok" ? "ok" : practice.result==="almost" ? "almost" : "bad") : "";
+  if(toEs){
+    const hint = it.type==="n" ? "Zelfstandig naamwoord: typ het met lidwoord (el / la)." : it.type==="a" ? "Bijvoeglijk naamwoord, mannelijke vorm." : "";
+    return `<div class="eyebrow">${t1 && t1.final ? "Eindronde · " : ""}Vertaal naar het Spaans · ${esc(E.catName(it.cat))}</div>
+      <div class="prompt">${esc(it.nl)}</div>
+      ${hint ? `<div class="mini">${hint}</div>` : ""}
+      <form class="ansform" action="#"><input class="answer ${cls}" id="ans" lang="es" enterkeyhint="go" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Typ hier…" value="${esc(practice.given||"")}"></form>
+      ${fb ? feedbackBlock(`${esc(it.es)} ${spk(it.es, "sm")}`) : accentBar() + `<div class="actions"><button class="btn big" type="button" data-action="check">Controleer <span class="kbd">Enter</span></button></div>`}`;
+  }
+  return `<div class="eyebrow">${t1 && t1.final ? "Eindronde · " : ""}Vertaal naar het Nederlands · ${esc(E.catName(it.cat))}</div>
+    <div class="word">${esc(it.es)} ${spk(it.es)}</div>
+    <form class="ansform" action="#"><input class="answer ${cls}" id="ans" lang="nl" enterkeyhint="go" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="In het Nederlands…" value="${esc(practice.given||"")}"></form>
+    ${fb ? feedbackBlock(esc(it.nl)) : `<div class="actions"><button class="btn big" type="button" data-action="check">Controleer <span class="kbd">Enter</span></button></div>`}`;
 }
 function conjTable(v, tenseId, opts={}){
   const forms = v.forms[tenseId], reg = E.conjugate({ inf:v.inf, o:{ refl:v.refl } })[tenseId];
-  const cell = i => `<div><span class="p">${esc(E.PERSONS[i])}</span><span class="f ${forms[i]!==reg[i] ? "irr" : ""}">${esc(forms[i])}</span></div>`;
+  const cell = i => `<div><span class="p">${esc(E.PERSONS[i])}</span><span class="f ${forms[i]!==reg[i] ? "irr" : ""}" ${canSpeak() ? `data-action="speak" data-nofocus data-text="${esc(forms[i])}" title="Spreek uit"` : ""}>${esc(forms[i])}</span></div>`;
   return `<div class="conj"><div class="stack" style="gap:0">${[0,1,2].map(cell).join("")}</div><div class="stack" style="gap:0">${[3,4,5].map(cell).join("")}</div></div>`;
 }
 function viewVIntro(it){
   const v = it.verb, tn = E.tense(it.tense);
   const known = E.TENSES.filter(t => t.id!==it.tense && statusOf(`vt:${v.inf}:${t.id}`)!=="nieuw").map(t=>t.name);
   return `<div class="eyebrow">${known.length ? "Nieuwe tijd" : "Nieuw werkwoord"} · ${esc(tn.name)}</div>
-    <div class="word">${esc(v.inf)}</div>
+    <div class="word">${esc(v.inf)} ${spk(v.inf)}</div>
     <div class="prompt">${esc(v.nl)}${v.refl ? ' <span class="mini">(wederkerend)</span>' : ""}${v.irregular ? ' <span class="pill leren">onregelmatig</span>' : ' <span class="pill bekend">regelmatig</span>'}</div>
     <div class="sub"><b>${esc(tn.name)}</b> — ${esc(tn.nl)}. ${esc(tn.uitleg)}</div>
     ${conjTable(v, it.tense)}
@@ -344,14 +369,14 @@ function viewVDrill(it){
   if(!practice.persons) practice.persons = E.shuffle([0,1,2,3,4,5]).slice(0,3).sort((a,b)=>a-b);
   const fb = practice.phase==="feedback", d = practice.drill || {};
   return `<div class="eyebrow">Vervoeg · ${esc(tn.name)} <span class="muted">(${esc(tn.nl)})</span></div>
-    <div class="word">${esc(v.inf)}</div>
+    <div class="word">${esc(v.inf)} ${spk(v.inf)}</div>
     <div class="sub">${esc(v.nl)}${v.refl ? " · wederkerend: typ ook me / te / se …" : ""}${it.tense==="perfecto" ? " · gebruik haber + participio" : ""}</div>
     <div class="drill">${practice.persons.map(p => `<form class="ansform" action="#"><label><span>${esc(E.PERSONS[p])}</span><input data-p="${p}" lang="es" enterkeyhint="next" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" class="${fb ? "fb " + (d[p]==="ok" ? "ok" : d[p]==="almost" ? "almost" : "bad") : ""}" value="${esc((practice.given||{})[p]||"")}"></label></form>`).join("")}</div>
     ${fb ? feedbackBlock("", `<div style="color:var(--ink);margin-top:6px">${conjTable(v, it.tense)}</div>`) : accentBar() + `<div class="actions"><button class="btn big" data-action="checkDrill">Controleer <span class="kbd">Enter</span></button></div>`}`;
 }
 function viewSIntro(it){
   return `<div class="eyebrow">Nieuwe zin · niveau ${it.lvl}</div>
-    <div class="cloze">${clozeHtml(it, `<b style="color:var(--accent)">${esc(it.cloze)}</b>`)}</div>
+    <div class="cloze">${clozeHtml(it, `<b style="color:var(--accent)">${esc(it.cloze)}</b>`)} ${spk(it.es)}</div>
     <div class="prompt">${esc(it.nl)}</div>
     ${it.isVerb ? `<div class="mini">Werkwoord: <b>${esc(it.verb.inf)}</b> (${esc(it.verb.nl)}) · ${esc(E.tenseLabel(it.tense))}</div>` : it.verb ? `<div class="mini">Werkwoord: <b>${esc(it.verb.inf)}</b> (${esc(it.verb.nl)}) · ${esc(E.tenseLabel(null))}</div>` : ""}
     <p class="hint">Lees de zin een paar keer hardop. Straks vul je hem zelf aan.</p>
@@ -364,7 +389,7 @@ function viewScramble(it){
     <div class="prompt">${esc(it.nl)}</div>
     <div class="build">${practice.built.length ? practice.built.map((b,k) => `<button class="chip word" data-action="unbuild" data-k="${k}" ${fb?"disabled":""}>${esc(b.w)}</button>`).join("") : `<span class="mini">Tik op de woorden hieronder…</span>`}</div>
     <div class="chips">${practice.pool.map(p => `<button class="chip word ${usedIdx.has(p.i) ? "used" : ""}" data-action="build" data-i="${p.i}" ${usedIdx.has(p.i)||fb ? "disabled" : ""}>${esc(p.w)}</button>`).join("")}</div>
-    ${fb ? feedbackBlock(esc(it.es)) : `<div class="actions"><button class="btn outline" data-action="clearBuild">Wis</button><button class="btn" data-action="checkBuild" ${practice.built.length===it.words.length ? "" : "disabled"}>Controleer</button></div>`}`;
+    ${fb ? feedbackBlock(`${esc(it.es)} ${spk(it.es, "sm")}`) : `<div class="actions"><button class="btn outline" data-action="clearBuild">Wis</button><button class="btn" data-action="checkBuild" ${practice.built.length===it.words.length ? "" : "disabled"}>Controleer</button></div>`}`;
 }
 function viewCloze(it){
   const fb = practice.phase==="feedback";
@@ -374,7 +399,7 @@ function viewCloze(it){
     <div class="sub">${esc(it.nl)}</div>
     <div class="mini">Begint met <b>${esc(it.cloze[0])}</b> · ${it.cloze.length} letters</div>
     <form class="ansform" action="#"><input class="answer ${fb ? "fb " + (practice.result==="ok" ? "ok" : practice.result==="almost" ? "almost" : "bad") : ""}" id="ans" lang="es" enterkeyhint="go" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="Het ontbrekende woord" value="${esc(practice.given||"")}"></form>
-    ${fb ? feedbackBlock(esc(it.cloze)) : accentBar() + `<div class="actions"><button class="btn big" type="button" data-action="check">Controleer <span class="kbd">Enter</span></button></div>`}`;
+    ${fb ? feedbackBlock(`${esc(it.cloze)} ${spk(it.es, "sm")}`) : accentBar() + `<div class="actions"><button class="btn big" type="button" data-action="check">Controleer <span class="kbd">Enter</span></button></div>`}`;
 }
 function viewVCloze(it){
   const fb = practice.phase==="feedback", v = it.verb, tn = E.tense(it.tense);
@@ -385,13 +410,13 @@ function viewVCloze(it){
     <div class="sub">${esc(it.nl)}</div>
     <div class="mini">Werkwoord: <b>${esc(v.inf)}</b> (${esc(v.nl)})${v.refl ? " · wederkerend" : ""}${it.tense==="perfecto" ? " · haber + participio" : ""}</div>
     <form class="ansform" action="#"><input class="answer ${fb ? "fb " + (practice.result==="ok" ? "ok" : practice.result==="almost" ? "almost" : "bad") : ""}" id="ans" lang="es" enterkeyhint="go" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="De juiste vorm van ${esc(v.inf)}" value="${esc(practice.given||"")}"></form>
-    ${fb ? feedbackBlock(esc(it.cloze), `<div style="color:var(--ink);margin-top:6px">${conjTable(v, it.tense)}</div>`) : accentBar() + `<div class="actions"><button class="btn big" type="button" data-action="check">Controleer <span class="kbd">Enter</span></button></div>`}`;
+    ${fb ? feedbackBlock(`${esc(it.cloze)} ${spk(it.es, "sm")}`, `<div style="color:var(--ink);margin-top:6px">${conjTable(v, it.tense)}</div>`) : accentBar() + `<div class="actions"><button class="btn big" type="button" data-action="check">Controleer <span class="kbd">Enter</span></button></div>`}`;
 }
 function viewSMC(it){
   if(!practice.options) practice.options = E.shuffle([it, ...E.distractors(it, 3)]);
   const fb = practice.phase==="feedback";
   return `<div class="eyebrow">Wat betekent deze zin?</div>
-    <div class="cloze">${esc(it.es)}</div>
+    <div class="cloze">${esc(it.es)} ${spk(it.es)}</div>
     <div class="choices">${practice.options.map((o,i) => { const cls = fb ? (o.id===it.id ? "right" : (practice.chosen===i ? "wrong" : "")) : ""; return `<button class="choice ${cls}" data-action="choose" data-i="${i}" ${fb ? "disabled" : ""}><span class="k">${i+1}</span><span>${esc(o.nl)}</span></button>`; }).join("")}</div>
     ${fb ? feedbackBlock(esc(it.nl)) : `<p class="hint">Kies met de toetsen 1 tot 4.</p>`}`;
 }
@@ -404,7 +429,7 @@ function renderDailySummary(s){
     <h1>${words.length ? "¡Muy bien!" : "Alles gezien"}</h1>
     ${words.length ? `<div class="grid4"><div class="tile"><b class="num">${words.length}</b><span>woorden geleerd</span></div><div class="tile"><b class="num">${fast}</b><span>meteen goed</span></div><div class="tile"><b class="num">${hard}</b><span>lastig</span></div><div class="tile"><b class="num">${Math.floor(s.elapsed/60)}</b><span>minuten</span></div></div>
     <p class="ink2">Deze woorden komen terug in je dagelijkse quiz: woorden die je meteen goed had over drie dagen, de rest morgen. Lastige woorden herhaalt de app vaker.</p>
-    <div class="list">${words.map(x => { const [cls,txt] = pill(x.p); return `<div class="item"><div class="grow"><div class="es">${esc(x.it.es)}</div><div class="nl">${esc(x.it.nl)}</div></div><span class="pill ${cls}">${txt}</span></div>`; }).join("")}</div>` : `<p class="ink2">Er zijn geen nieuwe woorden meer: je hebt de hele woordenlijst al gezien.</p>`}
+    <div class="list">${words.map(x => { const [cls,txt] = pill(x.p); return `<div class="item">${spk(x.it.es, "sm")}<div class="grow"><div class="es">${esc(x.it.es)}</div><div class="nl">${esc(x.it.nl)}</div></div><span class="pill ${cls}">${txt}</span></div>`; }).join("")}</div>` : `<p class="ink2">Er zijn geen nieuwe woorden meer: je hebt de hele woordenlijst al gezien.</p>`}
     <div class="actions"><button class="btn big" data-action="quit">Terug naar vandaag</button></div></section>`;
 }
 function renderSummary(s){
@@ -440,9 +465,12 @@ function checkTyped(){
   practice.given = given; practice.note = null;
   let r;
   const isCloze = t.t==="cloze" || t.t==="vcloze";
+  const toNl = t.t==="type" && t.dir==="es";
   if(isCloze) r = E.checkAnswer(given, [it.cloze], { reflexive: !!(it.verb && it.verb.refl) });
+  else if(toNl) r = E.checkDutch(given, it.nl);
   else r = E.checkAnswer(given, [it.es], { articles:true });
-  if(r==="almost"){ const g = E.norm(given), target = E.norm(isCloze ? it.cloze : it.es); practice.note = E.stripAcc(g)===E.stripAcc(target) ? "Goed, maar let op de accenten." : isCloze ? "Goed, maar vergeet me / te / se niet." : "Goed, maar vergeet het lidwoord niet."; }
+  if(r==="almost" && toNl) practice.note = "Bijna goed, kleine typfout.";
+  else if(r==="almost"){ const g = E.norm(given), target = E.norm(isCloze ? it.cloze : it.es); practice.note = E.stripAcc(g)===E.stripAcc(target) ? "Goed, maar let op de accenten." : isCloze ? "Goed, maar vergeet me / te / se niet." : "Goed, maar vergeet het lidwoord niet."; }
   grade(r);
 }
 function checkDrill(){
@@ -482,7 +510,7 @@ function renderWordList(){
   $("#wordList").innerHTML = (shown.map(w => {
     const st = data.items[w.id], s = E.status(st), open = ui.wordOpen===w.id;
     return `<button class="item" data-action="openWord" data-id="${esc(w.id)}"><div class="grow"><div class="es">${esc(w.es)}</div><div class="nl">${esc(w.nl)}</div></div><span class="pill ${s}">${E.statusName[s]}</span></button>
-      ${open ? `<div class="detail stack"><div class="row between"><span>${esc(E.catName(w.cat))} · niveau ${w.lvl}</span><span class="num">${st ? `${st.c} goed · ${st.w} fout` : "nog niet geoefend"}</span></div><div class="mini">${dueText(st)}${st && st.b ? ` · stap ${st.b} van ${E.MAXBOX}` : ""}</div><div class="row"><button class="btn sm ghost" data-action="markKnown" data-id="${esc(w.id)}">Markeer als bekend</button><button class="btn sm outline" data-action="relearn" data-id="${esc(w.id)}">Opnieuw leren</button></div></div>` : ""}`;
+      ${open ? `<div class="detail stack"><div class="row between"><span>${spk(w.es, "sm")} ${esc(E.catName(w.cat))} · niveau ${w.lvl}</span><span class="num">${st ? `${st.c} goed · ${st.w} fout` : "nog niet geoefend"}</span></div><div class="mini">${dueText(st)}${st && st.b ? ` · stap ${st.b} van ${E.MAXBOX}` : ""}</div><div class="row"><button class="btn sm ghost" data-action="markKnown" data-id="${esc(w.id)}">Markeer als bekend</button><button class="btn sm outline" data-action="relearn" data-id="${esc(w.id)}">Opnieuw leren</button></div></div>` : ""}`;
   }).join("") || `<div class="empty">Geen woorden gevonden.</div>`) + (list.length > ui.wordLimit ? `<div class="row" style="justify-content:center;padding:12px"><button class="btn sm ghost" data-action="moreWords">Toon meer (${list.length - ui.wordLimit} over)</button></div>` : "");
 }
 function renderQuick(){
@@ -521,11 +549,11 @@ function verbRow(v){
 }
 function verbDetail(v){
   const reg = E.conjugate({ inf:v.inf, o:{ refl:v.refl } });
-  const rows = [0,1,2,3,4,5].map(p => `<tr><td class="muted">${esc(E.PERSONS_SHORT[p])}</td>${E.TENSES.map(t => `<td class="${v.forms[t.id][p]!==reg[t.id][p] ? "" : ""}" style="${v.forms[t.id][p]!==reg[t.id][p] ? "color:var(--accent);font-weight:700" : ""}">${esc(v.forms[t.id][p])}</td>`).join("")}</tr>`).join("");
+  const rows = [0,1,2,3,4,5].map(p => `<tr><td class="muted">${esc(E.PERSONS_SHORT[p])}</td>${E.TENSES.map(t => `<td style="${v.forms[t.id][p]!==reg[t.id][p] ? "color:var(--accent);font-weight:700;" : ""}${canSpeak() ? "cursor:pointer" : ""}" ${canSpeak() ? `data-action="speak" data-nofocus data-text="${esc(v.forms[t.id][p])}" title="Spreek uit"` : ""}>${esc(v.forms[t.id][p])}</td>`).join("")}</tr>`).join("");
   const practiced = E.TENSES.filter(t => statusOf(`vt:${v.inf}:${t.id}`)!=="nieuw");
   const exs = E.sentencesForVerb(v.inf);
   return `<div class="detail stack">
-    <div class="row between"><span>${v.irregular ? '<span class="pill leren">onregelmatig</span>' : '<span class="pill bekend">regelmatig</span>'}${v.refl ? ' <span class="pill nieuw">wederkerend</span>' : ""}</span><span class="mini">participio <b>${esc(v.forms.participio)}</b> · gerundio <b>${esc(v.forms.gerundio)}</b></span></div>
+    <div class="row between"><span>${spk(v.inf, "sm")} ${v.irregular ? '<span class="pill leren">onregelmatig</span>' : '<span class="pill bekend">regelmatig</span>'}${v.refl ? ' <span class="pill nieuw">wederkerend</span>' : ""}</span><span class="mini">participio <b>${esc(v.forms.participio)}</b> · gerundio <b>${esc(v.forms.gerundio)}</b></span></div>
     <div class="scroll-x"><table class="table"><thead><tr><th></th>${E.TENSES.map(t => `<th>${esc(t.name)}</th>`).join("")}</tr></thead><tbody>${rows}</tbody></table></div>
     <div class="row"><button class="btn sm" data-action="drillVerb" data-id="${esc(v.id)}">Oefen ${practiced.length ? practiced.map(t=>t.name.toLowerCase()).slice(0,2).join(" en ") + (practiced.length>2 ? " en meer" : "") : "presente"}</button>${exs.length ? `<button class="btn sm ghost" data-action="drillVerbSents" data-id="${esc(v.id)}">Oefen in zinnen (${exs.length})</button>` : ""}</div>
     ${exs.length ? `<div class="stack" style="gap:6px"><div class="eyebrow">In zinnen</div>${exs.slice(0,8).map(z => `<div style="font-size:14px"><span class="mini" style="display:inline-block;min-width:150px">${esc(E.tenseLabel(z.tense))}</span>${clozeHtml(z, `<b>${esc(z.cloze)}</b>`)} <span class="muted">— ${esc(z.nl)}</span></div>`).join("")}${exs.length>8 ? `<div class="mini">en nog ${exs.length-8} zinnen op het tabblad Zinnen</div>` : ""}</div>` : ""}
@@ -561,7 +589,7 @@ function renderSentList(){
   $("#sentList").innerHTML = (shown.map(s => {
     const st = data.items[s.id], status = E.status(st), open = ui.sentOpen===s.id;
     return `<button class="item" data-action="openSent" data-id="${esc(s.id)}"><div class="grow"><div class="es" style="font-size:17px">${clozeHtml(s, `<b style="color:var(--accent)">${esc(s.cloze)}</b>`)}</div><div class="nl">${esc(s.nl)}</div></div><span class="pill ${status}">${E.statusName[status]}</span></button>
-      ${open ? `<div class="detail stack"><div class="row between"><span>${s.verb ? `<b>${esc(s.verb.inf)}</b> (${esc(s.verb.nl)}) · ${esc(E.tenseLabel(s.tense))}` : "Zin zonder werkwoordfocus"} · niveau ${s.lvl}</span><span class="num">${st ? `${st.c} goed · ${st.w} fout` : "nog niet geoefend"}</span></div><div class="mini">${dueText(st)}</div><div class="row"><button class="btn sm" data-action="drillSent" data-id="${esc(s.id)}">Oefen deze zin</button><button class="btn sm ghost" data-action="markKnownSent" data-id="${esc(s.id)}">Markeer als bekend</button><button class="btn sm outline" data-action="relearnSent" data-id="${esc(s.id)}">Opnieuw leren</button></div></div>` : ""}`;
+      ${open ? `<div class="detail stack"><div class="row between"><span>${spk(s.es, "sm")} ${s.verb ? `<b>${esc(s.verb.inf)}</b> (${esc(s.verb.nl)}) · ${esc(E.tenseLabel(s.tense))}` : "Zin zonder werkwoordfocus"} · niveau ${s.lvl}</span><span class="num">${st ? `${st.c} goed · ${st.w} fout` : "nog niet geoefend"}</span></div><div class="mini">${dueText(st)}</div><div class="row"><button class="btn sm" data-action="drillSent" data-id="${esc(s.id)}">Oefen deze zin</button><button class="btn sm ghost" data-action="markKnownSent" data-id="${esc(s.id)}">Markeer als bekend</button><button class="btn sm outline" data-action="relearnSent" data-id="${esc(s.id)}">Opnieuw leren</button></div></div>` : ""}`;
   }).join("") || `<div class="empty">Geen zinnen gevonden.</div>`) + (list.length > ui.sentLimit ? `<div class="row" style="justify-content:center;padding:12px"><button class="btn sm ghost" data-action="moreSents">Toon meer (${list.length - ui.sentLimit} over)</button></div>` : "");
 }
 function tenseDrillTasks(tenseId, limit=15){
@@ -623,6 +651,8 @@ function renderSettings(){
       <div class="setrow"><div><b>Nieuwe zinnen per dag</b><div class="mini">Zinnen bij de werkwoordsvormen van die dag gaan voor.</div></div><select data-setting="newSentences">${opt([0,1,2,3,4,5,6,8,10], s.newSentences)}</select></div>
       <div class="setrow"><div><b>Vervoegen in zinnen per dag</b><div class="mini">Invulzinnen met werkwoordsvormen die je al aan het leren bent.</div></div><select data-setting="dailySentences">${opt([0,4,6,8,10,12,15,20], s.dailySentences ?? 8)}</select></div>
       <div class="setrow"><div><b>Antwoorden geven</b><div class="mini">Mix: eerst meerkeuze, daarna zelf typen.</div></div><select data-setting="mode">${opt(["mix","type","mc"], s.mode, v => ({mix:"Mix", type:"Altijd typen", mc:"Altijd meerkeuze"})[v])}</select></div>
+      <div class="setrow"><div><b>Overhoorrichting</b><div class="mini">Beide: Spaans → Nederlands én Nederlands → Spaans, afwisselend.</div></div><select data-setting="direction">${opt(["both","nl2es","es2nl"], s.direction||"both", v => ({both:"Beide richtingen", nl2es:"Nederlands → Spaans", es2nl:"Spaans → Nederlands"})[v])}</select></div>
+      <div class="setrow"><div><b>Uitspraak</b><div class="mini">${speechOK() ? "Spaanse stem van je apparaat. Tik op de luidspreker om een woord of zin te horen." : "Je browser ondersteunt geen spraak."}</div></div><select data-setting="speech" ${speechOK() ? "" : "disabled"}>${opt(["auto","button","off"], s.speech||"auto", v => ({auto:"Automatisch", button:"Alleen via knop", off:"Uit"})[v])}</select></div>
     </section>
     <section class="card stack">
       <h3>Opslag</h3>
@@ -658,6 +688,7 @@ document.addEventListener("click", e => {
     check(){ checkTyped(); },
     checkDrill(){ checkDrill(); },
     accent(){ insertAccent(b); },
+    speak(){ speak(b.dataset.text); },
     build(){ const i = +b.dataset.i, it = E.item(s.tasks[s.idx].id); practice.built.push({ w: it.words[i], i }); renderPractice(); },
     unbuild(){ practice.built.splice(+b.dataset.k, 1); renderPractice(); },
     clearBuild(){ practice.built = []; renderPractice(); },
@@ -692,8 +723,8 @@ document.addEventListener("click", e => {
   if(actions[a]) actions[a]();
 });
 document.addEventListener("beforeinput", e => { if(cur==="practice" && practice && practice.phase==="feedback" && e.target.closest && e.target.closest(".pcard")) e.preventDefault(); });
-document.addEventListener("mousedown", e => { if(e.target.closest && e.target.closest("[data-action=accent]")) e.preventDefault(); });
-document.addEventListener("touchend", e => { const b = e.target.closest && e.target.closest("[data-action=accent]"); if(b){ e.preventDefault(); insertAccent(b); } }, { passive:false });
+document.addEventListener("mousedown", e => { if(e.target.closest && e.target.closest("[data-nofocus]")) e.preventDefault(); });
+document.addEventListener("touchend", e => { const b = e.target.closest && e.target.closest("[data-nofocus]"); if(b){ e.preventDefault(); b.click(); } }, { passive:false });
 function insertAccent(b){ const inp = practice && practice.lastInput && view.contains(practice.lastInput) ? practice.lastInput : view.querySelector(".pcard input"); if(inp) insertAtCursor(inp, b.dataset.ch); }
 document.addEventListener("focusin", e => {
   if(practice && e.target.matches && e.target.matches("input")){ practice.lastInput = e.target; setTimeout(() => { try { e.target.scrollIntoView({ block:"center", behavior:"smooth" }); } catch(err){} }, 250); }
@@ -706,7 +737,7 @@ document.addEventListener("input", e => {
 document.addEventListener("change", e => {
   if(e.target.id==="wordCat"){ ui.wordCat = e.target.value; ui.wordLimit = 80; renderWordList(); }
   const key = e.target.dataset && e.target.dataset.setting;
-  if(key){ const v = e.target.value; data.settings[key] = (key==="mode" || key==="dailyPick") ? v : +v; if(data.session && data.session.day===today && !data.session.done && data.session.idx===0) data.session = null; if((key==="dailyWords" || key==="dailyPick") && data.daily && data.daily.day===today && !data.daily.done && data.daily.answered===0) data.daily = null; save(); renderSettings(); }
+  if(key){ const v = e.target.value; data.settings[key] = /^-?\d+$/.test(v) ? +v : v; if(data.session && data.session.day===today && !data.session.done && data.session.idx===0) data.session = null; if((key==="dailyWords" || key==="dailyPick") && data.daily && data.daily.day===today && !data.daily.done && data.daily.answered===0) data.daily = null; save(); renderSettings(); }
 });
 function handleEnter(){
   const s = sess(); if(!s || practice.phase==="summary") return;

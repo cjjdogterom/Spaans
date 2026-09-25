@@ -1,6 +1,6 @@
 # Poco a Poco — Spaans leren
 
-Dagelijkse Spaanse training (Spaans uit Spanje, uitleg in het Nederlands): woorden van de dag, een quiz met slimme herhaling, werkwoordsvervoegingen in zes tijden en honderden zinnen.
+Dagelijkse Spaanse training (Spaans uit Spanje, uitleg in het Nederlands): woorden van de dag, een quiz met slimme herhaling in beide richtingen, werkwoordsvervoegingen in zes tijden, honderden zinnen en uitspraak via de spraaksynthese van het apparaat.
 
 ## Bestanden
 

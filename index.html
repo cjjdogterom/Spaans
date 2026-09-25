@@ -146,6 +146,13 @@ select.search{appearance:auto}
 .answer.ok{border-color:var(--ok)} .answer.bad{border-color:var(--bad)} .answer.almost{border-color:var(--warn)}
 .pcard input.fb{caret-color:transparent;pointer-events:none}
 .ansform{display:block;margin:0;width:100%}
+.spk{display:inline-grid;place-items:center;width:38px;height:38px;border-radius:50%;background:var(--accent-soft);color:var(--accent);vertical-align:middle;flex:0 0 auto}
+.spk svg{width:20px;height:20px;fill:none;stroke:currentColor;stroke-width:2;stroke-linecap:round;stroke-linejoin:round}
+.spk.sm{width:30px;height:30px;margin-right:4px} .spk.sm svg{width:16px;height:16px}
+.spk:active{background:var(--accent);color:var(--accent-ink)}
+.word .spk{transform:translateY(-6px)}
+.conj .f[data-action]{cursor:pointer;border-radius:6px;padding:0 4px}
+@media (hover:hover){.conj .f[data-action]:hover{background:var(--accent-soft)}}
 .accents{display:flex;gap:6px;flex-wrap:wrap}
 .accents button{padding:6px 10px;border-radius:8px;background:var(--surface2);font-family:var(--display);font-size:18px;min-width:38px}
 .feedback{border-radius:14px;padding:14px 16px;display:flex;flex-direction:column;gap:6px}

@@ -195,6 +195,11 @@ E.applyResult = (st, result, today) => {
 E.markKnown = (st, today) => Object.assign(st||{c:0,w:0,s:0}, { b:4, d: today+5, i: (st&&st.i)||today, l: today, known:1 });
 E.resetItem = (st, today) => Object.assign(st||{c:0,w:0,s:0}, { b:1, d: today, l: today });
 
+// ---------- overhoorrichting ----------
+// dirs(settings) → [eerste richting (herkennen), tweede richting (produceren)]
+E.dirs = settings => { const d = (settings && settings.direction) || "both"; return d==="nl2es" ? ["nl","nl"] : d==="es2nl" ? ["es","es"] : ["es","nl"]; };
+E.dirFor = settings => { const d = (settings && settings.direction) || "both"; return d==="nl2es" ? "nl" : d==="es2nl" ? "es" : (Math.random()<0.5 ? "nl" : "es"); };
+
 // ---------- antwoorden controleren ----------
 // Geeft "ok", "almost" (alleen accenten/lidwoord/wederkerend voornaamwoord anders) of "wrong"
 E.checkAnswer = (given, accepted, opts={}) => {
@@ -211,6 +216,17 @@ E.checkAnswer = (given, accepted, opts={}) => {
   if(exact.some(c => c===g)) return "ok";
   const gs = stripAcc(g);
   if(lenient.some(c => c===g) || exact.some(c => stripAcc(c)===gs) || lenient.some(c => stripAcc(c)===gs)) return "almost";
+  return "wrong";
+};
+const lev = (a,b) => { if(a===b) return 0; const m=a.length, n=b.length; if(!m) return n; if(!n) return m; let prev = Array.from({length:n+1},(_,i)=>i); for(let i=1;i<=m;i++){ const cur=[i]; for(let j=1;j<=n;j++){ cur[j] = Math.min(prev[j]+1, cur[j-1]+1, prev[j-1] + (a[i-1]===b[j-1]?0:1)); } prev=cur; } return prev[n]; };
+E.checkDutch = (given, nl) => {
+  const art = x => x.replace(/^(de|het|een) /,"").trim();
+  const g = stripAcc(String(given).replace(/\s*\([^)]*\)/g,"")), ga = art(g);
+  if(!g) return "wrong";
+  const cands = [];
+  E.nlAccepted(nl).forEach(p => { const n = stripAcc(p); cands.push(n, art(n)); n.split(/,\s*/).forEach(x => { if(x) cands.push(stripAcc(x), art(stripAcc(x))); }); });
+  if(cands.some(c => c===g || c===ga)) return "ok";
+  if(cands.some(c => c.length>=4 && (lev(c,g)<=1 || lev(c,ga)<=1))) return "almost";
   return "wrong";
 };
 E.nlAccepted = nl => nl.split(" / ").map(p => p.replace(/\s*\([^)]*\)/g,"").trim()).filter(Boolean);
@@ -243,10 +259,11 @@ function reviewTask(item, st, settings){
     return r<0.65 ? { t:fill, id:item.id } : r<0.85 ? (long ? { t:fill, id:item.id } : { t:"scramble", id:item.id }) : { t:"smc", id:item.id };
   }
   // woord
-  if(mode==="mc") return { t:"mc", id:item.id, dir: Math.random()<0.5 ? "es" : "nl" };
-  if(mode==="type") return { t:"type", id:item.id };
-  if(st.b<=2) return { t:"mc", id:item.id, dir: st.b<=1 ? "es" : (Math.random()<0.5?"es":"nl") };
-  return Math.random()<0.75 ? { t:"type", id:item.id } : { t:"mc", id:item.id, dir:"nl" };
+  const both = (settings.direction||"both")==="both";
+  if(mode==="mc") return { t:"mc", id:item.id, dir: E.dirFor(settings) };
+  if(mode==="type") return { t:"type", id:item.id, dir: E.dirFor(settings) };
+  if(st.b<=2) return { t:"mc", id:item.id, dir: (st.b<=1 && both) ? "es" : E.dirFor(settings) };
+  return Math.random()<0.75 ? { t:"type", id:item.id, dir: E.dirFor(settings) } : { t:"mc", id:item.id, dir: E.dirFor(settings) };
 }
 
 E.ensureDrill = (data, today) => {
@@ -282,7 +299,8 @@ E.buildSession = (data, today) => {
   const tasks = [];
   tasks.push(...revTasks.slice(0, half));
   newWords.forEach(w => tasks.push({ t:"intro", id:w.id }));
-  shuffle(newWords).forEach(w => tasks.push({ t:"mc", id:w.id, dir:"es", fresh:1 }));
+  const [dA, dB] = E.dirs(settings);
+  shuffle(newWords).forEach(w => tasks.push({ t:"mc", id:w.id, dir:dA, fresh:1 }));
   newVerbs.forEach(v => { tasks.push({ t:"vintro", id:v.id }); tasks.push({ t:"vdrill", id:v.id, fresh:1 }); });
   newSents.forEach(s => tasks.push({ t:"sintro", id:s.id }));
   shuffle(newSents).forEach(s => tasks.push(E.sentTask(s, true)));
@@ -290,7 +308,7 @@ E.buildSession = (data, today) => {
   tasks.push(...drill.slice(0, Math.ceil(drill.length/2)));
   tasks.push(...revTasks.slice(half));
   tasks.push(...drill.slice(Math.ceil(drill.length/2)));
-  shuffle(newWords).forEach(w => tasks.push({ t: settings.mode==="mc" ? "mc" : "type", id:w.id, dir:"nl", fresh:1 }));
+  shuffle(newWords).forEach(w => tasks.push({ t: settings.mode==="mc" ? "mc" : "type", id:w.id, dir:dB, fresh:1 }));
   newVerbs.forEach(v => tasks.push({ t:"vdrill", id:v.id, fresh:1 }));
   // 4. rustige dag? vul aan met meer nieuwe woorden, werkwoordsvormen en zinnen (maximaal het dubbele van de instelling)
   const moreWords = orderWords.filter(w => !st(w.id) && !newWords.includes(w)).slice(0, nWords);
@@ -302,9 +320,9 @@ E.buildSession = (data, today) => {
     batchW.forEach(w => tasks.push({ t:"intro", id:w.id }));
     if(v){ tasks.push({ t:"vintro", id:v.id }); tasks.push({ t:"vdrill", id:v.id, fresh:1 }); addedV.push(v); }
     if(z){ tasks.push({ t:"sintro", id:z.id }); addedS.push(z); }
-    shuffle(batchW).forEach(w => tasks.push({ t:"mc", id:w.id, dir:"es", fresh:1 }));
+    shuffle(batchW).forEach(w => tasks.push({ t:"mc", id:w.id, dir:dA, fresh:1 }));
     if(z) tasks.push(E.sentTask(z, true));
-    shuffle(batchW).forEach(w => tasks.push({ t: settings.mode==="mc" ? "mc" : "type", id:w.id, dir:"nl", fresh:1 }));
+    shuffle(batchW).forEach(w => tasks.push({ t: settings.mode==="mc" ? "mc" : "type", id:w.id, dir:dB, fresh:1 }));
     addedW.push(...batchW);
   }
   // 5. daarna aanvullen tot de streeftijd met herhalingen en zinnen
@@ -363,13 +381,20 @@ E.dailyNextChunk = (d, settings) => {
   if(!ids.length) return false;
   d.chunk++;
   ids.forEach(id => { d.prog[id] = d.prog[id] || { c:0, w:0, s:0, typed:0, done:0 }; });
-  const typeT = settings.mode==="mc" ? { t:"mc", dir:"nl" } : { t:"type" };
+  const [dA, dB] = E.dirs(settings);
+  const typeT = settings.mode==="mc" ? { t:"mc", dir:dB } : { t:"type", dir:dB };
   d.tasks.push(...ids.map(id => ({ t:"intro", id, daily:1 })));
-  d.tasks.push(...shuffle(ids).map(id => ({ t:"mc", id, dir:"es", daily:1 })));
+  d.tasks.push(...shuffle(ids).map(id => ({ t:"mc", id, dir:dA, daily:1 })));
   d.tasks.push(...shuffle(ids).map(id => Object.assign({ id, daily:1 }, typeT)));
   return true;
 };
-E.dailyTaskFor = (p, settings) => settings.mode==="type" ? { t:"type" } : (p.s===0 ? { t:"mc", dir:"es" } : settings.mode==="mc" ? { t:"mc", dir:"nl" } : { t:"type" });
+E.dailyTaskFor = (p, settings) => {
+  const [dA, dB] = E.dirs(settings), alt = ((p.c+p.w) % 2===0) ? dB : dA;   // afwisselend beide richtingen
+  if(settings.mode==="type") return { t:"type", dir:alt };
+  if(p.s===0) return { t:"mc", dir:dA };
+  if(settings.mode==="mc") return { t:"mc", dir:alt };
+  return { t:"type", dir:alt };
+};
 E.dailyGrade = (data, d, task, result, today) => {
   const id = task.id, p = d.prog[id] = d.prog[id] || { c:0, w:0, s:0, typed:0, done:0 };
   const ok = result!=="wrong";
@@ -398,7 +423,7 @@ E.dailyAdvance = (d, settings) => {
   const pending = d.ids.filter(id => d.prog[id] && !d.prog[id].done);
   if(pending.length){ pending.forEach(id => d.tasks.push(Object.assign({ id, daily:1 }, E.dailyTaskFor(d.prog[id], settings)))); return true; }
   if(E.dailyNextChunk(d, settings)) return true;
-  if(!d.final && d.ids.length){ d.final = true; d.tasks.push(...shuffle(d.ids).map(id => Object.assign({ id, daily:1, final:1 }, settings.mode==="mc" ? { t:"mc", dir:"nl" } : { t:"type" }))); return true; }
+  if(!d.final && d.ids.length){ const [dA, dB] = E.dirs(settings); d.final = true; d.tasks.push(...shuffle(d.ids).map((id,i) => Object.assign({ id, daily:1, final:1, dir: i%2===0 ? dB : dA }, settings.mode==="mc" ? { t:"mc" } : { t:"type" }))); return true; }
   d.done = true; return false;
 };
 E.dailyKnown = (data, d, id, today) => {
@@ -424,7 +449,7 @@ E.streak = (days, today) => {
 
 // ---------- opslag (lokaal + gesynchroniseerd) ----------
 const LS_KEY = "pocoapoco.v1";
-const DEFAULTS = { settings:{ minutes:30, newWords:0, newVerbs:2, newSentences:5, dailySentences:8, dailyWords:30, dailyPick:"random", mode:"mix" }, items:{}, days:{}, session:null, daily:null, updatedAt:0 };
+const DEFAULTS = { settings:{ minutes:30, newWords:0, newVerbs:2, newSentences:5, dailySentences:8, dailyWords:30, dailyPick:"random", mode:"mix", speech:"auto", direction:"both" }, items:{}, days:{}, session:null, daily:null, updatedAt:0 };
 E.load = () => { try { const raw = localStorage.getItem(LS_KEY); if(raw){ const d = JSON.parse(raw); const out = Object.assign({}, DEFAULTS, d, { settings: Object.assign({}, DEFAULTS.settings, d.settings||{}) }); E.migrate(out, d.settings||{}); return out; } } catch(e){} return JSON.parse(JSON.stringify(DEFAULTS)); };
 // oudere opslag (zonder dagelijks zinnenblok): zinnen standaard ruimer aanzetten; `stored` zijn de ruwe opgeslagen instellingen
 E.migrate = (d, stored) => {
