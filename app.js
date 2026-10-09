@@ -320,6 +320,16 @@ function viewIntro(it){
     ${ex ? `<div class="sub"><span class="eyebrow" style="display:block;margin-bottom:4px">Voorbeeld</span>${highlight(ex.es, it)}<br><span class="mini">${esc(ex.nl)}</span></div>` : ""}
     <div class="actions"><button class="btn outline" data-action="knowAlready">Ken ik al</button><button class="btn" data-action="introNext">Volgende</button></div>`;
 }
+// Was het antwoord goed, dan blijft die knop aanklikbaar: nog een tik brengt je meteen naar de volgende vraag.
+function choices(it, optText){
+  const fb = practice.phase==="feedback";
+  return `<div class="choices">${practice.options.map((o,i) => {
+    const right = o.id===it.id;
+    const cls = fb ? (right ? "right" : (practice.chosen===i ? "wrong" : "")) : "";
+    const again = fb && right && practice.result==="ok";
+    return `<button class="choice ${cls}${again ? " again" : ""}" data-action="${again ? "next" : "choose"}" data-i="${i}" ${fb && !again ? "disabled" : ""}${again ? ` title="Volgende vraag"` : ""}><span class="k">${i+1}</span><span>${esc(optText(o))}</span>${again ? `<span class="go" aria-hidden="true">›</span>` : ""}</button>`;
+  }).join("")}</div>`;
+}
 function viewMC(it, t){
   if(!practice.options) practice.options = E.shuffle([it, ...E.distractors(it, 3)]);
   const es = t.dir==="es";
@@ -327,7 +337,7 @@ function viewMC(it, t){
   const fb = practice.phase==="feedback";
   return `<div class="eyebrow">${es ? "Wat betekent dit?" : "Hoe zeg je dit in het Spaans?"}</div>
     <div class="${es ? "word" : "prompt"}">${esc(es ? it.es : it.nl)}${es ? " " + spk(it.es) : ""}</div>
-    <div class="choices">${practice.options.map((o,i) => { const cls = fb ? (o.id===it.id ? "right" : (practice.chosen===i ? "wrong" : "")) : ""; return `<button class="choice ${cls}" data-action="choose" data-i="${i}" ${fb ? "disabled" : ""}><span class="k">${i+1}</span><span>${esc(optText(o))}</span></button>`; }).join("")}</div>
+    ${choices(it, optText)}
     ${fb ? feedbackBlock(`${esc(it.es)} — ${esc(it.nl)} ${spk(it.es, "sm")}`) : `<p class="hint">Kies met de toetsen 1 tot 4.</p>`}`;
 }
 function viewType(it, t){
@@ -417,7 +427,7 @@ function viewSMC(it){
   const fb = practice.phase==="feedback";
   return `<div class="eyebrow">Wat betekent deze zin?</div>
     <div class="cloze">${esc(it.es)} ${spk(it.es)}</div>
-    <div class="choices">${practice.options.map((o,i) => { const cls = fb ? (o.id===it.id ? "right" : (practice.chosen===i ? "wrong" : "")) : ""; return `<button class="choice ${cls}" data-action="choose" data-i="${i}" ${fb ? "disabled" : ""}><span class="k">${i+1}</span><span>${esc(o.nl)}</span></button>`; }).join("")}</div>
+    ${choices(it, o => o.nl)}
     ${fb ? feedbackBlock(esc(it.nl)) : `<p class="hint">Kies met de toetsen 1 tot 4.</p>`}`;
 }
 function renderDailySummary(s){

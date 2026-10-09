@@ -142,6 +142,8 @@ select.search{appearance:auto}
 .choice .k{width:24px;height:24px;border-radius:7px;background:var(--surface2);display:inline-grid;place-items:center;font-size:13px;font-weight:700;color:var(--muted);flex:0 0 auto}
 .choice.right{border-color:var(--ok);background:var(--ok-soft)} .choice.wrong{border-color:var(--bad);background:var(--bad-soft)}
 .choice[disabled]{cursor:default}
+.choice.again{cursor:pointer} @media (hover:hover){.choice.again:hover{border-color:var(--ok)}}
+.choice .go{margin-left:auto;color:var(--ok);font-size:22px;font-weight:700;line-height:1;flex:0 0 auto}
 .answer{width:100%;padding:14px 16px;border-radius:12px;border:1.5px solid var(--line);background:var(--surface2);font-size:20px;font-family:var(--display)}
 .answer.ok{border-color:var(--ok)} .answer.bad{border-color:var(--bad)} .answer.almost{border-color:var(--warn)}
 .pcard input.fb{caret-color:transparent;pointer-events:none}
