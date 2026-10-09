@@ -449,7 +449,7 @@ E.streak = (days, today) => {
 
 // ---------- opslag (lokaal + gesynchroniseerd) ----------
 const LS_KEY = "pocoapoco.v1";
-const DEFAULTS = { settings:{ minutes:30, newWords:0, newVerbs:2, newSentences:5, dailySentences:8, dailyWords:30, dailyPick:"random", mode:"mix", speech:"auto", direction:"both" }, items:{}, days:{}, session:null, daily:null, updatedAt:0 };
+const DEFAULTS = { settings:{ minutes:30, newWords:0, newVerbs:2, newSentences:5, dailySentences:8, dailyWords:30, dailyPick:"random", mode:"mix", speech:"button", direction:"both" }, items:{}, days:{}, session:null, daily:null, updatedAt:0 };
 E.load = () => { try { const raw = localStorage.getItem(LS_KEY); if(raw){ const d = JSON.parse(raw); const out = Object.assign({}, DEFAULTS, d, { settings: Object.assign({}, DEFAULTS.settings, d.settings||{}) }); E.migrate(out, d.settings||{}); return out; } } catch(e){} return JSON.parse(JSON.stringify(DEFAULTS)); };
 // oudere opslag (zonder dagelijks zinnenblok): zinnen standaard ruimer aanzetten; `stored` zijn de ruwe opgeslagen instellingen
 E.migrate = (d, stored) => {
@@ -457,6 +457,9 @@ E.migrate = (d, stored) => {
   if(!stored || stored.dailySentences===undefined){ d.settings.dailySentences = d.settings.dailySentences ?? 8; if((d.settings.newSentences||0) < 5) d.settings.newSentences = 5; }
   // nieuwe woorden leer je via "Woorden van de dag"; de quiz herhaalt
   if(!stored || stored.dailyWords===undefined){ d.settings.dailyWords = 30; d.settings.newWords = 0; }
+  // uitspraak klinkt alleen op verzoek: oudere opslag stond standaard op automatisch
+  if(stored && stored.speechManual===undefined && d.settings.speech==="auto") d.settings.speech = "button";
+  d.settings.speechManual = 1;
   return d;
 };
 E.saveLocal = data => { try { localStorage.setItem(LS_KEY, JSON.stringify(data)); } catch(e){} };
